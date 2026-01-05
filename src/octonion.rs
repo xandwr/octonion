@@ -2,45 +2,168 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 use crate::quaternion::Quaternion;
 
-/// An octonion over `f64`, represented in the standard basis:
+/// An octonion over `f64`, represented in the standard basis.
 ///
-/// $x = a_0 + a_1 e_1 + a_2 e_2 + a_3 e_3 + a_4 e_4 + a_5 e_5 + a_6 e_6 + a_7 e_7$
+/// An octonion is an 8-dimensional hypercomplex number of the form:
 ///
-/// Internally, multiplication is implemented via the Cayley–Dickson construction
-/// using a pair of quaternions.
+/// ```text
+/// x = a₀ + a₁e₁ + a₂e₂ + a₃e₃ + a₄e₄ + a₅e₅ + a₆e₆ + a₇e₇
+/// ```
+///
+/// where `a₀` is the real (scalar) part and `a₁` through `a₇` are the
+/// imaginary coefficients. The basis elements `e₁` through `e₇` satisfy
+/// `eᵢ² = -1` and follow specific multiplication rules.
+///
+/// # Construction
+///
+/// Octonions can be created in several ways:
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// // From individual coefficients
+/// let x = Octonion::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+///
+/// // From an array
+/// let y = Octonion::from_array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+///
+/// // From a real number (embeds as scalar part)
+/// let z = Octonion::from(3.14);
+///
+/// // Using predefined constants
+/// let one = Octonion::ONE;
+/// let zero = Octonion::ZERO;
+/// let e1 = Octonion::E1;
+/// ```
+///
+/// # Arithmetic Operations
+///
+/// The standard arithmetic operators are implemented:
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// let x = Octonion::new(1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+/// let y = Octonion::new(0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+///
+/// let sum = x + y;
+/// let diff = x - y;
+/// let prod = x * y;
+/// let neg = -x;
+///
+/// // Scalar multiplication and division
+/// let scaled = x * 2.0;
+/// let halved = x / 2.0;
+/// ```
+///
+/// # Non-Associativity
+///
+/// Unlike real numbers, complex numbers, or quaternions, octonion
+/// multiplication is **not associative**:
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// let e1 = Octonion::E1;
+/// let e2 = Octonion::E2;
+/// let e4 = Octonion::E4;
+///
+/// // (e1 * e2) * e4 ≠ e1 * (e2 * e4) in general
+/// let left = (e1 * e2) * e4;
+/// let right = e1 * (e2 * e4);
+/// // These may differ!
+/// ```
+///
+/// However, octonions are *alternative*, meaning `x(xy) = x²y` and
+/// `(xy)y = xy²` always hold.
+///
+/// # Implementation Details
+///
+/// Internally, multiplication uses the Cayley-Dickson construction,
+/// representing an octonion as a pair of quaternions for efficient
+/// computation.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Octonion {
     coeffs: [f64; 8],
 }
 
 impl Octonion {
+    /// The additive identity (zero octonion).
+    ///
+    /// All coefficients are zero: `0 + 0e₁ + 0e₂ + ... + 0e₇`.
     pub const ZERO: Self = Self { coeffs: [0.0; 8] };
+
+    /// The multiplicative identity (one).
+    ///
+    /// Equal to the real number 1: `1 + 0e₁ + 0e₂ + ... + 0e₇`.
     pub const ONE: Self = Self {
         coeffs: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     };
 
+    /// The first imaginary basis element `e₁`.
+    ///
+    /// Satisfies `e₁² = -1` and `e₁ * e₂ = e₃`.
     pub const E1: Self = Self {
         coeffs: [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     };
+
+    /// The second imaginary basis element `e₂`.
+    ///
+    /// Satisfies `e₂² = -1` and `e₂ * e₁ = -e₃`.
     pub const E2: Self = Self {
         coeffs: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     };
+
+    /// The third imaginary basis element `e₃`.
+    ///
+    /// Satisfies `e₃² = -1`. Equal to `e₁ * e₂`.
     pub const E3: Self = Self {
         coeffs: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
     };
+
+    /// The fourth imaginary basis element `e₄`.
+    ///
+    /// Satisfies `e₄² = -1` and `e₁ * e₄ = e₅`.
     pub const E4: Self = Self {
         coeffs: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
     };
+
+    /// The fifth imaginary basis element `e₅`.
+    ///
+    /// Satisfies `e₅² = -1`. Equal to `e₁ * e₄`.
     pub const E5: Self = Self {
         coeffs: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
     };
+
+    /// The sixth imaginary basis element `e₆`.
+    ///
+    /// Satisfies `e₆² = -1`.
     pub const E6: Self = Self {
         coeffs: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
     };
+
+    /// The seventh imaginary basis element `e₇`.
+    ///
+    /// Satisfies `e₇² = -1`.
     pub const E7: Self = Self {
         coeffs: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
     };
 
+    /// Creates a new octonion from its eight coefficients.
+    ///
+    /// The coefficients correspond to:
+    /// - `a0`: real (scalar) part
+    /// - `a1` through `a7`: coefficients of `e₁` through `e₇`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+    /// assert_eq!(x.real(), 1.0);
+    /// assert_eq!(x.coeff(1), 2.0);
+    /// ```
     #[inline]
     pub const fn new(
         a0: f64,
@@ -57,31 +180,129 @@ impl Octonion {
         }
     }
 
+    /// Creates a new octonion from an array of coefficients.
+    ///
+    /// The array indices correspond to the basis elements:
+    /// - Index 0: real part
+    /// - Indices 1-7: coefficients of `e₁` through `e₇`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let coeffs = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    /// let x = Octonion::from_array(coeffs);
+    /// assert_eq!(x, Octonion::ONE);
+    /// ```
     #[inline]
     pub const fn from_array(coeffs: [f64; 8]) -> Self {
         Self { coeffs }
     }
 
+    /// Returns the coefficients as an array.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+    /// let arr = x.to_array();
+    /// assert_eq!(arr[0], 1.0);
+    /// assert_eq!(arr[7], 8.0);
+    /// ```
     #[inline]
     pub const fn to_array(self) -> [f64; 8] {
         self.coeffs
     }
 
+    /// Returns the real (scalar) part of the octonion.
+    ///
+    /// This is the coefficient of the identity element (index 0).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(3.14, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0);
+    /// assert_eq!(x.real(), 3.14);
+    /// ```
     #[inline]
     pub const fn real(self) -> f64 {
         self.coeffs[0]
     }
 
+    /// Returns the coefficient at the given index.
+    ///
+    /// - Index 0 returns the real part
+    /// - Indices 1-7 return the coefficients of `e₁` through `e₇`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= 8`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::E3;
+    /// assert_eq!(x.coeff(0), 0.0);  // real part
+    /// assert_eq!(x.coeff(3), 1.0);  // e₃ coefficient
+    /// ```
     #[inline]
     pub const fn coeff(self, index: usize) -> f64 {
         self.coeffs[index]
     }
 
+    /// Returns `true` if all coefficients are exactly zero.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// assert!(Octonion::ZERO.is_zero());
+    /// assert!(!Octonion::ONE.is_zero());
+    /// assert!(!Octonion::E1.is_zero());
+    /// ```
     #[inline]
     pub fn is_zero(self) -> bool {
         self.coeffs.iter().all(|&c| c == 0.0)
     }
 
+    /// Returns the conjugate of this octonion.
+    ///
+    /// The conjugate negates all imaginary components while preserving
+    /// the real part:
+    ///
+    /// ```text
+    /// conj(a₀ + a₁e₁ + ... + a₇e₇) = a₀ - a₁e₁ - ... - a₇e₇
+    /// ```
+    ///
+    /// # Properties
+    ///
+    /// - `conj(conj(x)) = x`
+    /// - `conj(x + y) = conj(x) + conj(y)`
+    /// - `conj(xy) = conj(y) * conj(x)` (note the reversal)
+    /// - `x * conj(x) = |x|²` (a non-negative real number)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+    /// let c = x.conj();
+    ///
+    /// assert_eq!(c.real(), 1.0);  // real part unchanged
+    /// assert_eq!(c.coeff(1), -2.0);  // imaginary parts negated
+    ///
+    /// // Double conjugate is identity
+    /// assert_eq!(x.conj().conj(), x);
+    /// ```
     #[inline]
     pub const fn conj(self) -> Self {
         Self {
@@ -98,12 +319,62 @@ impl Octonion {
         }
     }
 
+    /// Returns the squared norm (squared magnitude) of this octonion.
+    ///
+    /// The squared norm is the sum of squares of all coefficients:
+    ///
+    /// ```text
+    /// |x|² = a₀² + a₁² + a₂² + a₃² + a₄² + a₅² + a₆² + a₇²
+    /// ```
+    ///
+    /// This is equivalent to `x * conj(x)`, which always yields a
+    /// non-negative real number.
+    ///
+    /// # Properties
+    ///
+    /// - `norm_sqr(x) >= 0`
+    /// - `norm_sqr(x) = 0` if and only if `x = 0`
+    /// - `norm_sqr(xy) = norm_sqr(x) * norm_sqr(y)` (multiplicative)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(1.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    /// assert_eq!(x.norm_sqr(), 9.0);  // 1² + 2² + 2² = 9
+    ///
+    /// // Basis elements have unit norm
+    /// assert_eq!(Octonion::E1.norm_sqr(), 1.0);
+    /// ```
     #[inline]
     pub fn norm_sqr(self) -> f64 {
         self.coeffs.iter().map(|c| c * c).sum()
     }
 
     /// Returns the multiplicative inverse, or `None` if this is exactly zero.
+    ///
+    /// For a non-zero octonion `x`, the inverse is:
+    ///
+    /// ```text
+    /// x⁻¹ = conj(x) / |x|²
+    /// ```
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let x = Octonion::new(2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    /// let inv = x.try_inverse().unwrap();
+    ///
+    /// // x * x⁻¹ ≈ 1 (up to floating-point precision)
+    /// let prod = x * inv;
+    /// assert!((prod.real() - 1.0).abs() < 1e-10);
+    ///
+    /// // Zero has no inverse
+    /// assert!(Octonion::ZERO.try_inverse().is_none());
+    /// ```
     #[inline]
     pub fn try_inverse(self) -> Option<Self> {
         let n2 = self.norm_sqr();
@@ -113,6 +384,7 @@ impl Octonion {
         Some(self.conj() / n2)
     }
 
+    /// Splits the octonion into a pair of quaternions for Cayley-Dickson multiplication.
     #[inline]
     fn split(self) -> (Quaternion, Quaternion) {
         let a = Quaternion::new(
@@ -130,6 +402,7 @@ impl Octonion {
         (a, b)
     }
 
+    /// Joins a pair of quaternions into an octonion.
     #[inline]
     fn join(a: Quaternion, b: Quaternion) -> Self {
         Self {
@@ -138,12 +411,24 @@ impl Octonion {
     }
 }
 
+/// Embeds a real number as an octonion with zero imaginary parts.
+///
+/// # Examples
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// let x: Octonion = 3.14.into();
+/// assert_eq!(x.real(), 3.14);
+/// assert_eq!(x.coeff(1), 0.0);
+/// ```
 impl From<f64> for Octonion {
     fn from(value: f64) -> Self {
         Self::new(value, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     }
 }
 
+/// Component-wise addition of two octonions.
 impl Add for Octonion {
     type Output = Self;
 
@@ -156,12 +441,14 @@ impl Add for Octonion {
     }
 }
 
+/// In-place addition.
 impl AddAssign for Octonion {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
+/// Component-wise subtraction of two octonions.
 impl Sub for Octonion {
     type Output = Self;
 
@@ -174,12 +461,14 @@ impl Sub for Octonion {
     }
 }
 
+/// In-place subtraction.
 impl SubAssign for Octonion {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
 
+/// Negation of all coefficients.
 impl Neg for Octonion {
     type Output = Self;
 
@@ -192,6 +481,19 @@ impl Neg for Octonion {
     }
 }
 
+/// Octonion multiplication using the Cayley-Dickson construction.
+///
+/// **Note:** Octonion multiplication is neither commutative nor associative.
+///
+/// # Examples
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// // Non-commutativity: e1 * e2 ≠ e2 * e1
+/// assert_eq!(Octonion::E1 * Octonion::E2, Octonion::E3);
+/// assert_eq!(Octonion::E2 * Octonion::E1, -Octonion::E3);
+/// ```
 impl Mul for Octonion {
     type Output = Self;
 
@@ -208,12 +510,16 @@ impl Mul for Octonion {
     }
 }
 
+/// In-place octonion multiplication.
 impl MulAssign for Octonion {
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
 }
 
+/// Scalar multiplication (octonion * scalar).
+///
+/// Scales all coefficients by the given factor.
 impl Mul<f64> for Octonion {
     type Output = Self;
 
@@ -226,6 +532,9 @@ impl Mul<f64> for Octonion {
     }
 }
 
+/// Scalar multiplication (scalar * octonion).
+///
+/// Scales all coefficients by the given factor.
 impl Mul<Octonion> for f64 {
     type Output = Octonion;
 
@@ -234,6 +543,9 @@ impl Mul<Octonion> for f64 {
     }
 }
 
+/// Scalar division.
+///
+/// Divides all coefficients by the given divisor.
 impl Div<f64> for Octonion {
     type Output = Self;
 
@@ -246,6 +558,7 @@ impl Div<f64> for Octonion {
     }
 }
 
+/// In-place scalar division.
 impl DivAssign<f64> for Octonion {
     fn div_assign(&mut self, rhs: f64) {
         *self = *self / rhs;
