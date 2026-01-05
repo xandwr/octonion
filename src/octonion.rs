@@ -1,3 +1,4 @@
+use core::fmt;
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use crate::quaternion::Quaternion;
@@ -228,7 +229,7 @@ impl<'a> QuaternionView<'a> {
 /// Internally, multiplication uses the Cayley-Dickson construction,
 /// representing an octonion as a pair of quaternions for efficient
 /// computation.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct Octonion {
     coeffs: [f64; 8],
 }
@@ -758,6 +759,349 @@ impl Div<f64> for Octonion {
 impl DivAssign<f64> for Octonion {
     fn div_assign(&mut self, rhs: f64) {
         *self = *self / rhs;
+    }
+}
+
+// ============================================================================
+// DISPLAY AND DEBUG: Fano Plane Color-Coded Output
+// ============================================================================
+//
+// The Fano plane organizes the 7 imaginary units into 7 lines (triples):
+//   Line 1: e₁, e₂, e₃  (the quaternion subalgebra)
+//   Line 2: e₁, e₄, e₅
+//   Line 3: e₁, e₆, e₇  (the "outer circle" through e₁)
+//   Line 4: e₂, e₄, e₆
+//   Line 5: e₂, e₅, e₇
+//   Line 6: e₃, e₄, e₇
+//   Line 7: e₃, e₅, e₆
+//
+// We color by "depth" from the real axis:
+//   - Real (e₀):     White/Bold     - the scalar
+//   - e₁, e₂, e₃:    RGB primary    - quaternion subalgebra
+//   - e₄, e₅, e₆, e₇: CMY secondary - the "new" octonion directions
+
+/// ANSI color codes for Fano plane visualization.
+mod ansi {
+    pub const RESET: &str = "\x1b[0m";
+    pub const BOLD: &str = "\x1b[1m";
+    pub const DIM: &str = "\x1b[2m";
+
+    // Real part: bright white
+    pub const WHITE: &str = "\x1b[97m";
+
+    // Quaternion subalgebra (e₁, e₂, e₃): RGB primaries
+    pub const RED: &str = "\x1b[91m"; // e₁ (i)
+    pub const GREEN: &str = "\x1b[92m"; // e₂ (j)
+    pub const BLUE: &str = "\x1b[94m"; // e₃ (k)
+
+    // Octonion-specific (e₄, e₅, e₆, e₇): CMY secondaries + violet
+    pub const YELLOW: &str = "\x1b[93m"; // e₄
+    pub const CYAN: &str = "\x1b[96m"; // e₅
+    pub const MAGENTA: &str = "\x1b[95m"; // e₆
+    pub const VIOLET: &str = "\x1b[35m"; // e₇ (darker magenta)
+}
+
+/// Returns the ANSI color for a basis element index.
+const fn basis_color(index: usize) -> &'static str {
+    match index {
+        0 => ansi::WHITE,
+        1 => ansi::RED,
+        2 => ansi::GREEN,
+        3 => ansi::BLUE,
+        4 => ansi::YELLOW,
+        5 => ansi::CYAN,
+        6 => ansi::MAGENTA,
+        7 => ansi::VIOLET,
+        _ => ansi::RESET,
+    }
+}
+
+/// Returns the subscript character for a digit 0-7.
+const fn subscript(n: usize) -> char {
+    match n {
+        0 => '₀',
+        1 => '₁',
+        2 => '₂',
+        3 => '₃',
+        4 => '₄',
+        5 => '₅',
+        6 => '₆',
+        7 => '₇',
+        _ => '?',
+    }
+}
+
+/// Dimensional classification of an octonion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OctonionKind {
+    /// All coefficients zero
+    Zero,
+    /// Only real part non-zero
+    Real,
+    /// Real + one imaginary (complex-like)
+    Complex(usize),
+    /// Real + e₁ + e₂ + e₃ (quaternion subalgebra)
+    Quaternion,
+    /// General octonion
+    Octonion,
+}
+
+impl Octonion {
+    /// Determines the "kind" of this octonion for dimensional folding.
+    fn kind(&self) -> OctonionKind {
+        // Count nonzero coefficients and track which ones (no_std friendly)
+        let mut nonzero_count = 0u8;
+        let mut nonzero_mask = 0u8; // Bitmask of which indices are nonzero
+        let mut first_nonzero = 8usize; // Index of first nonzero (8 = none)
+        let mut second_nonzero = 8usize;
+
+        for (i, &c) in self.coeffs.iter().enumerate() {
+            if c != 0.0 {
+                nonzero_mask |= 1 << i;
+                nonzero_count += 1;
+                if first_nonzero == 8 {
+                    first_nonzero = i;
+                } else if second_nonzero == 8 {
+                    second_nonzero = i;
+                }
+            }
+        }
+
+        match nonzero_count {
+            0 => OctonionKind::Zero,
+            1 => {
+                if first_nonzero == 0 {
+                    OctonionKind::Real
+                } else {
+                    OctonionKind::Complex(first_nonzero)
+                }
+            }
+            2 if first_nonzero == 0 => OctonionKind::Complex(second_nonzero),
+            _ => {
+                // Check if it's in the quaternion subalgebra (only bits 0-3 set)
+                if nonzero_mask & 0b1111_0000 == 0 {
+                    OctonionKind::Quaternion
+                } else {
+                    OctonionKind::Octonion
+                }
+            }
+        }
+    }
+
+    /// Formats a coefficient with sign handling.
+    fn fmt_coeff(
+        f: &mut fmt::Formatter<'_>,
+        coeff: f64,
+        index: usize,
+        is_first: bool,
+        use_color: bool,
+    ) -> fmt::Result {
+        let color = if use_color { basis_color(index) } else { "" };
+        let reset = if use_color { ansi::RESET } else { "" };
+
+        let sign = if coeff < 0.0 {
+            " - "
+        } else if is_first {
+            ""
+        } else {
+            " + "
+        };
+
+        let abs_coeff = coeff.abs();
+
+        // Unit name: i, j, k for quaternion subalgebra, e₄-e₇ for the rest
+        let write_unit = |f: &mut fmt::Formatter<'_>| -> fmt::Result {
+            match index {
+                1 => write!(f, "i"),
+                2 => write!(f, "j"),
+                3 => write!(f, "k"),
+                n => write!(f, "e{}", subscript(n)),
+            }
+        };
+
+        if index == 0 {
+            // Real part
+            write!(f, "{sign}{color}{abs_coeff}{reset}")
+        } else if (abs_coeff - 1.0).abs() < f64::EPSILON {
+            // Coefficient is ±1, omit the "1"
+            write!(f, "{sign}{color}")?;
+            write_unit(f)?;
+            write!(f, "{reset}")
+        } else {
+            write!(f, "{sign}{color}{abs_coeff}")?;
+            write_unit(f)?;
+            write!(f, "{reset}")
+        }
+    }
+}
+
+impl fmt::Display for Octonion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Check if we should use colors (alternate flag '#' disables them)
+        let use_color = !f.alternate();
+
+        match self.kind() {
+            OctonionKind::Zero => {
+                if use_color {
+                    write!(f, "{}{}0{}", ansi::DIM, ansi::WHITE, ansi::RESET)
+                } else {
+                    write!(f, "0")
+                }
+            }
+
+            OctonionKind::Real => {
+                let color = if use_color { ansi::WHITE } else { "" };
+                let bold = if use_color { ansi::BOLD } else { "" };
+                let reset = if use_color { ansi::RESET } else { "" };
+                write!(f, "{bold}{color}{}{reset}", self.coeffs[0])
+            }
+
+            OctonionKind::Complex(i) => {
+                // Print as "a + bi" style (like complex numbers)
+                let color = if use_color { basis_color(i) } else { "" };
+                let white = if use_color { ansi::WHITE } else { "" };
+                let reset = if use_color { ansi::RESET } else { "" };
+
+                let a = self.coeffs[0];
+                let b = self.coeffs[i];
+
+                // Helper to write the unit name (i, j, k for quaternion subalgebra)
+                let write_unit = |f: &mut fmt::Formatter<'_>| -> fmt::Result {
+                    match i {
+                        1 => write!(f, "i"),
+                        2 => write!(f, "j"),
+                        3 => write!(f, "k"),
+                        _ => write!(f, "e{}", subscript(i)),
+                    }
+                };
+
+                if a == 0.0 {
+                    // Pure imaginary
+                    if (b.abs() - 1.0).abs() < f64::EPSILON {
+                        if b > 0.0 {
+                            write!(f, "{color}")?;
+                            write_unit(f)?;
+                            write!(f, "{reset}")
+                        } else {
+                            write!(f, "-{color}")?;
+                            write_unit(f)?;
+                            write!(f, "{reset}")
+                        }
+                    } else {
+                        write!(f, "{color}{b}")?;
+                        write_unit(f)?;
+                        write!(f, "{reset}")
+                    }
+                } else {
+                    // a + bi form
+                    let sign = if b < 0.0 { " - " } else { " + " };
+                    let abs_b = b.abs();
+                    if (abs_b - 1.0).abs() < f64::EPSILON {
+                        write!(f, "{white}{a}{reset}{sign}{color}")?;
+                        write_unit(f)?;
+                        write!(f, "{reset}")
+                    } else {
+                        write!(f, "{white}{a}{reset}{sign}{color}{abs_b}")?;
+                        write_unit(f)?;
+                        write!(f, "{reset}")
+                    }
+                }
+            }
+
+            OctonionKind::Quaternion => {
+                // Print as "a + bi + cj + dk"
+                let white = if use_color { ansi::WHITE } else { "" };
+                let red = if use_color { ansi::RED } else { "" };
+                let green = if use_color { ansi::GREEN } else { "" };
+                let blue = if use_color { ansi::BLUE } else { "" };
+                let reset = if use_color { ansi::RESET } else { "" };
+
+                let [a, b, c, d, ..] = self.coeffs;
+                let mut first = true;
+
+                if a != 0.0 {
+                    write!(f, "{white}{a}{reset}")?;
+                    first = false;
+                }
+
+                for (coeff, color, name) in [(b, red, "i"), (c, green, "j"), (d, blue, "k")] {
+                    if coeff != 0.0 {
+                        let sign = if coeff < 0.0 {
+                            " - "
+                        } else if first {
+                            ""
+                        } else {
+                            " + "
+                        };
+                        let abs_c = coeff.abs();
+                        if (abs_c - 1.0).abs() < f64::EPSILON {
+                            write!(f, "{sign}{color}{name}{reset}")?;
+                        } else {
+                            write!(f, "{sign}{color}{abs_c}{name}{reset}")?;
+                        }
+                        first = false;
+                    }
+                }
+
+                if first {
+                    // All were zero (shouldn't happen given our kind detection)
+                    write!(f, "0")?;
+                }
+
+                Ok(())
+            }
+
+            OctonionKind::Octonion => {
+                // Full octonion: show all non-zero terms with Fano coloring
+                let mut first = true;
+
+                for (i, &coeff) in self.coeffs.iter().enumerate() {
+                    if coeff != 0.0 {
+                        Self::fmt_coeff(f, coeff, i, first, use_color)?;
+                        first = false;
+                    }
+                }
+
+                if first {
+                    write!(f, "0")?;
+                }
+
+                Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Debug for Octonion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Debug shows the full structure with type annotation
+        let use_color = !f.alternate();
+
+        if use_color {
+            write!(f, "{}Octonion{} {{ ", ansi::DIM, ansi::RESET)?;
+        } else {
+            write!(f, "Octonion {{ ")?;
+        }
+
+        // Unit names for debug output
+        const UNIT_NAMES: [&str; 8] = ["", "i", "j", "k", "e₄", "e₅", "e₆", "e₇"];
+
+        // Always show all components in debug
+        for (i, &coeff) in self.coeffs.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            let color = if use_color { basis_color(i) } else { "" };
+            let reset = if use_color { ansi::RESET } else { "" };
+
+            if i == 0 {
+                write!(f, "{color}{coeff}{reset}")?;
+            } else {
+                write!(f, "{color}{}={coeff}{reset}", UNIT_NAMES[i])?;
+            }
+        }
+
+        write!(f, " }}")
     }
 }
 
