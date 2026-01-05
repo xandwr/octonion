@@ -2,6 +2,10 @@
 //!
 //! Tests for `IntegralOctonion` including lattice membership, arithmetic,
 //! units, roots, and the algebraic properties of the E8 lattice.
+//!
+//! These tests require the `e8` feature flag.
+
+#![cfg(feature = "e8")]
 
 use octonion::e8::IntegralOctonion;
 
