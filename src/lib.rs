@@ -80,6 +80,9 @@ mod expr;
 #[cfg(feature = "alloc")]
 mod paren;
 
+#[cfg(feature = "e8")]
+pub mod e8;
+
 pub use octonion::{Octonion, QuaternionView};
 pub use simd::{mul_direct, mul_simd_avx};
 

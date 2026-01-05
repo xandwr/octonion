@@ -14,6 +14,7 @@ categories = ["mathematics", "no-std", "science"]
 [features]
 default = ["alloc"]
 alloc = []
+e8 = []
 
 [dev-dependencies]
 criterion = "0.5"
