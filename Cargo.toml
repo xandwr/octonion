@@ -2,14 +2,15 @@
 name = "octonion"
 version = "0.1.0"
 edition = "2024"
-authors = ["Xander"]
+authors = ["xandwr"]
 description = "Minimal, dependency-free, no_std octonion algebra"
 documentation = "https://docs.rs/octonion"
 readme = "README.md"
 repository = "https://github.com/xander/octonion"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 keywords = ["octonion", "algebra", "math", "quaternion", "no_std"]
 categories = ["mathematics", "no-std", "science"]
+publish = true
 
 [features]
 default = ["alloc"]
