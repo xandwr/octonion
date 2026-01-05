@@ -90,6 +90,3 @@ pub use simd::{mul_direct, mul_simd_avx};
 pub use expr::OctoExpr;
 #[cfg(feature = "alloc")]
 pub use paren::Paren;
-
-#[cfg(test)]
-extern crate std;
