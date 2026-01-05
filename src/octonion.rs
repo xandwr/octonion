@@ -2,6 +2,152 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 use crate::quaternion::Quaternion;
 
+/// A view into an [`Octonion`] that is known to have zero coefficients for `e₄` through `e₇`.
+///
+/// This type provides access to associative multiplication operations that are only valid
+/// when the octonion lies within the quaternion subalgebra. Unlike general octonion
+/// multiplication, quaternion multiplication is associative: `(xy)z = x(yz)`.
+///
+/// # Obtaining a QuaternionView
+///
+/// Use [`Octonion::as_quaternion`] to obtain a `QuaternionView`. This returns `Some` only
+/// if the `e₄`, `e₅`, `e₆`, and `e₇` coefficients are exactly zero.
+///
+/// ```
+/// use octonion::Octonion;
+///
+/// // A pure quaternion (e4-e7 are zero)
+/// let q = Octonion::new(1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0);
+/// let view = q.as_quaternion().expect("should be a quaternion");
+///
+/// // Can use associative multiplication
+/// let q2 = Octonion::new(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+/// let v2 = q2.as_quaternion().unwrap();
+/// let product = view.mul(v2);
+///
+/// // A general octonion cannot be viewed as a quaternion
+/// let oct = Octonion::new(1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 0.0, 0.0);
+/// assert!(oct.as_quaternion().is_none());
+/// ```
+///
+/// # Mathematical Background
+///
+/// The quaternions form a 4-dimensional subalgebra of the octonions, embedded as those
+/// octonions with zero coefficients for `e₄` through `e₇`. While octonion multiplication
+/// is non-associative, the quaternion subalgebra retains associativity.
+#[derive(Copy, Clone, Debug)]
+pub struct QuaternionView<'a> {
+    octonion: &'a Octonion,
+}
+
+impl<'a> QuaternionView<'a> {
+    /// Returns a reference to the underlying octonion.
+    #[inline]
+    pub const fn as_octonion(&self) -> &'a Octonion {
+        self.octonion
+    }
+
+    /// Returns the real (scalar) part of the quaternion.
+    #[inline]
+    pub const fn real(&self) -> f64 {
+        self.octonion.coeffs[0]
+    }
+
+    /// Returns the coefficient of `i` (same as `e₁`).
+    #[inline]
+    pub const fn i(&self) -> f64 {
+        self.octonion.coeffs[1]
+    }
+
+    /// Returns the coefficient of `j` (same as `e₂`).
+    #[inline]
+    pub const fn j(&self) -> f64 {
+        self.octonion.coeffs[2]
+    }
+
+    /// Returns the coefficient of `k` (same as `e₃`).
+    #[inline]
+    pub const fn k(&self) -> f64 {
+        self.octonion.coeffs[3]
+    }
+
+    /// Performs associative quaternion multiplication, returning a new octonion.
+    ///
+    /// Unlike general octonion multiplication, this operation is associative:
+    /// `(a.mul(b)).mul(c) = a.mul(b.mul(c))` when all operands are quaternions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// let i = Octonion::E1.as_quaternion().unwrap();
+    /// let j = Octonion::E2.as_quaternion().unwrap();
+    ///
+    /// // i * j = k
+    /// assert_eq!(i.mul(j), Octonion::E3);
+    ///
+    /// // Associativity holds for quaternion multiplication
+    /// let a_oct = Octonion::new(1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0);
+    /// let b_oct = Octonion::new(0.5, -1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0);
+    /// let c_oct = Octonion::new(-1.0, 0.0, 1.0, -0.5, 0.0, 0.0, 0.0, 0.0);
+    ///
+    /// let a = a_oct.as_quaternion().unwrap();
+    /// let b = b_oct.as_quaternion().unwrap();
+    /// let c = c_oct.as_quaternion().unwrap();
+    ///
+    /// let ab = a.mul(b);
+    /// let bc = b.mul(c);
+    /// let left = ab.as_quaternion().unwrap().mul(c);
+    /// let right = a.mul(bc.as_quaternion().unwrap());
+    /// // left == right (up to floating-point precision)
+    /// ```
+    #[inline]
+    #[allow(clippy::should_implement_trait)]
+    pub fn mul(self, rhs: QuaternionView<'_>) -> Octonion {
+        let a = Quaternion::new(
+            self.octonion.coeffs[0],
+            self.octonion.coeffs[1],
+            self.octonion.coeffs[2],
+            self.octonion.coeffs[3],
+        );
+        let b = Quaternion::new(
+            rhs.octonion.coeffs[0],
+            rhs.octonion.coeffs[1],
+            rhs.octonion.coeffs[2],
+            rhs.octonion.coeffs[3],
+        );
+        let result = a * b;
+        Octonion::new(result.w, result.x, result.y, result.z, 0.0, 0.0, 0.0, 0.0)
+    }
+
+    /// Returns the conjugate as an octonion.
+    ///
+    /// The conjugate negates the imaginary components: `conj(w + xi + yj + zk) = w - xi - yj - zk`.
+    #[inline]
+    pub const fn conj(&self) -> Octonion {
+        Octonion::new(
+            self.octonion.coeffs[0],
+            -self.octonion.coeffs[1],
+            -self.octonion.coeffs[2],
+            -self.octonion.coeffs[3],
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+    }
+
+    /// Returns the squared norm of this quaternion.
+    #[inline]
+    pub fn norm_sqr(&self) -> f64 {
+        self.octonion.coeffs[0] * self.octonion.coeffs[0]
+            + self.octonion.coeffs[1] * self.octonion.coeffs[1]
+            + self.octonion.coeffs[2] * self.octonion.coeffs[2]
+            + self.octonion.coeffs[3] * self.octonion.coeffs[3]
+    }
+}
+
 /// An octonion over `f64`, represented in the standard basis.
 ///
 /// An octonion is an 8-dimensional hypercomplex number of the form:
@@ -382,6 +528,56 @@ impl Octonion {
             return None;
         }
         Some(self.conj() / n2)
+    }
+
+    /// Returns a [`QuaternionView`] if this octonion lies in the quaternion subalgebra.
+    ///
+    /// This method checks whether the coefficients for `e₄`, `e₅`, `e₆`, and `e₇` are
+    /// exactly zero. If so, it returns a view that provides access to associative
+    /// multiplication operations.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(QuaternionView)` if `coeff(4) == coeff(5) == coeff(6) == coeff(7) == 0.0`
+    /// - `None` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use octonion::Octonion;
+    ///
+    /// // A pure quaternion
+    /// let q = Octonion::new(1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 0.0, 0.0);
+    /// assert!(q.as_quaternion().is_some());
+    ///
+    /// // Basis elements e1, e2, e3 are quaternions
+    /// assert!(Octonion::E1.as_quaternion().is_some());
+    /// assert!(Octonion::E2.as_quaternion().is_some());
+    /// assert!(Octonion::E3.as_quaternion().is_some());
+    ///
+    /// // Basis elements e4-e7 are not in the quaternion subalgebra
+    /// assert!(Octonion::E4.as_quaternion().is_none());
+    /// assert!(Octonion::E5.as_quaternion().is_none());
+    ///
+    /// // Use associative multiplication
+    /// let a = Octonion::new(1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    /// let b = Octonion::new(0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    /// if let (Some(qa), Some(qb)) = (a.as_quaternion(), b.as_quaternion()) {
+    ///     let product = qa.mul(qb);
+    ///     // Quaternion multiplication is associative!
+    /// }
+    /// ```
+    #[inline]
+    pub fn as_quaternion(&self) -> Option<QuaternionView<'_>> {
+        if self.coeffs[4] == 0.0
+            && self.coeffs[5] == 0.0
+            && self.coeffs[6] == 0.0
+            && self.coeffs[7] == 0.0
+        {
+            Some(QuaternionView { octonion: self })
+        } else {
+            None
+        }
     }
 
     /// Splits the octonion into a pair of quaternions for Cayley-Dickson multiplication.

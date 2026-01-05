@@ -67,10 +67,24 @@
 //! - No unsafe code
 //! - Compile-time constructors via `const fn`
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+mod macros;
 mod octonion;
 mod quaternion;
 
-pub use octonion::Octonion;
+#[cfg(feature = "alloc")]
+mod expr;
+#[cfg(feature = "alloc")]
+mod paren;
+
+pub use octonion::{Octonion, QuaternionView};
+
+#[cfg(feature = "alloc")]
+pub use expr::OctoExpr;
+#[cfg(feature = "alloc")]
+pub use paren::Paren;
 
 #[cfg(test)]
 extern crate std;

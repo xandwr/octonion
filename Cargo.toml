@@ -11,6 +11,10 @@ license = "MIT OR Apache-2.0"
 keywords = ["octonion", "algebra", "math", "quaternion", "no_std"]
 categories = ["mathematics", "no-std", "science"]
 
+[features]
+default = ["alloc"]
+alloc = []
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
