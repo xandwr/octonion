@@ -15,6 +15,13 @@ categories = ["mathematics", "no-std", "science"]
 default = ["alloc"]
 alloc = []
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "multiplication"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

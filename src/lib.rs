@@ -73,6 +73,7 @@ extern crate alloc;
 mod macros;
 mod octonion;
 mod quaternion;
+pub mod simd;
 
 #[cfg(feature = "alloc")]
 mod expr;
@@ -80,6 +81,7 @@ mod expr;
 mod paren;
 
 pub use octonion::{Octonion, QuaternionView};
+pub use simd::{mul_direct, mul_simd_avx};
 
 #[cfg(feature = "alloc")]
 pub use expr::OctoExpr;
